@@ -16,6 +16,7 @@ router.get('/', async (_req: Request, res: Response) => {
       time: row.time,
       location: row.location,
       description: row.description,
+      website: row.website,
       coverImage: row.cover_image,
       status: row.status,
       syncEventbrite: row.sync_eventbrite,
@@ -36,13 +37,13 @@ router.get('/', async (_req: Request, res: Response) => {
 
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { title, date, time, location, description, coverImage, status, syncEventbrite, syncWix } = req.body
+    const { title, date, time, location, description, website, coverImage, status, syncEventbrite, syncWix } = req.body
 
     const result = await pool.query(
-      `INSERT INTO events (title, date, time, location, description, cover_image, status, sync_eventbrite, sync_wix)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO events (title, date, time, location, description, website, cover_image, status, sync_eventbrite, sync_wix)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-      [title, date, time, location, description, coverImage, status || 'upcoming', syncEventbrite ?? true, syncWix ?? true]
+      [title, date, time, location, description, website || null, coverImage, status || 'upcoming', syncEventbrite ?? true, syncWix ?? true]
     )
 
     const event = result.rows[0]
@@ -60,15 +61,15 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
-    const { title, date, time, location, description, coverImage, status, syncEventbrite, syncWix } = req.body
+    const { title, date, time, location, description, website, coverImage, status, syncEventbrite, syncWix } = req.body
 
     const result = await pool.query(
       `UPDATE events SET
-        title = $1, date = $2, time = $3, location = $4, description = $5,
-        cover_image = $6, status = $7, sync_eventbrite = $8, sync_wix = $9, updated_at = NOW()
-       WHERE id = $10
+        title = $1, date = $2, time = $3, location = $4, description = $5, website = $6,
+        cover_image = $7, status = $8, sync_eventbrite = $9, sync_wix = $10, updated_at = NOW()
+       WHERE id = $11
        RETURNING *`,
-      [title, date, time, location, description, coverImage, status, syncEventbrite, syncWix, id]
+      [title, date, time, location, description, website || null, coverImage, status, syncEventbrite, syncWix, id]
     )
 
     if (result.rows.length === 0) {

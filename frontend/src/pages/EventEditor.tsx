@@ -14,6 +14,7 @@ export default function EventEditor() {
     date: '',
     time: '',
     location: '',
+    website: '',
     description: '',
     syncEventbrite: true,
     syncWix: true,
@@ -99,6 +100,21 @@ export default function EventEditor() {
                     value={form.location}
                     onChange={(e) => update('location', e.target.value)}
                     placeholder="Metropolitan Museum of Art, NY"
+                    className="w-full bg-[#f3f3f3] border-none rounded-lg pl-10 pr-4 py-3 text-sm focus:ring-1 focus:ring-[#0A0A0A]"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium uppercase tracking-widest text-[#474747] mb-3">
+                  Website
+                </label>
+                <div className="relative">
+                  <Icon name="link" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#474747] !text-lg" />
+                  <input
+                    type="url"
+                    value={form.website}
+                    onChange={(e) => update('website', e.target.value)}
+                    placeholder="https://yourevent.com"
                     className="w-full bg-[#f3f3f3] border-none rounded-lg pl-10 pr-4 py-3 text-sm focus:ring-1 focus:ring-[#0A0A0A]"
                   />
                 </div>

@@ -1,8 +1,40 @@
 import { Router, Request, Response } from 'express'
 import pool from '../db/client'
-import { getOrganizer } from '../services/eventbriteService'
+import { getOrganizer, searchOrganizers } from '../services/eventbriteService'
 
 const router = Router()
+
+// Search Eventbrite organizers — MUST be before /:id route
+router.get('/search', async (req: Request, res: Response) => {
+  try {
+    const q = req.query.q as string
+    if (!q || q.trim().length < 2) {
+      res.json([])
+      return
+    }
+
+    const data = await searchOrganizers(q)
+
+    // Extract unique organizers from events results
+    const organizersMap = new Map<string, { id: string; name: string; eventCount: number; website?: string }>()
+    for (const event of data.events || []) {
+      if (event.organizer && !organizersMap.has(event.organizer.id)) {
+        organizersMap.set(event.organizer.id, {
+          id: event.organizer.id,
+          name: event.organizer.name || 'Unknown Organizer',
+          eventCount: event.organizer.num_past_events || 0,
+          website: event.organizer.website || undefined,
+        })
+      }
+    }
+
+    res.json(Array.from(organizersMap.values()))
+  } catch (err) {
+    // If Eventbrite not connected, return empty gracefully
+    console.error('Organizer search error:', err)
+    res.json([])
+  }
+})
 
 router.get('/', async (_req: Request, res: Response) => {
   try {
