@@ -97,19 +97,42 @@ router.delete('/eventbrite', async (_req: Request, res: Response) => {
 
 // Called when a user installs the app on their Wix site (embedded in iframe)
 router.get('/wix/install', async (req: Request, res: Response) => {
-  const { instance } = req.query
   const clientId = process.env.WIX_CLIENT_ID
   const clientSecret = process.env.WIX_CLIENT_SECRET
 
-  if (!instance || !clientId || !clientSecret) {
-    res.status(400).json({ error: 'Missing instance or Wix credentials' })
+  // Log all query params to debug what Wix sends
+  console.log('Wix install - query params:', JSON.stringify(req.query))
+
+  const instance = req.query.instance as string | undefined
+
+  if (!clientId || !clientSecret) {
+    res.status(500).json({ error: 'Wix credentials not configured' })
+    return
+  }
+
+  if (!instance) {
+    // Show a simple HTML page if no instance (direct browser visit)
+    res.send('<html><body><h2>EventCommand - Wix Integration</h2><p>This page is loaded by Wix when installing the app.</p></body></html>')
     return
   }
 
   try {
-    // Decode the instance to get the instanceId
-    const instancePayload = Buffer.from((instance as string).split('.')[1], 'base64').toString()
-    const { instanceId } = JSON.parse(instancePayload)
+    // Wix instance format: <signature>.<base64_payload>
+    const parts = instance.split('.')
+    let instanceId: string
+
+    if (parts.length >= 2) {
+      // Standard signed instance format
+      const payload = Buffer.from(parts[1], 'base64').toString()
+      console.log('Wix decoded payload:', payload)
+      const parsed = JSON.parse(payload)
+      instanceId = parsed.instanceId
+    } else {
+      // Maybe it's just the instance ID directly
+      instanceId = instance
+    }
+
+    console.log('Wix instanceId:', instanceId)
 
     // Exchange for access token using client_credentials
     const tokenRes = await axios.post('https://www.wixapis.com/oauth2/token', {
@@ -120,6 +143,7 @@ router.get('/wix/install', async (req: Request, res: Response) => {
     })
 
     const { access_token } = tokenRes.data
+    console.log('Wix token obtained successfully')
 
     // Store the connection
     await pool.query(
@@ -130,10 +154,20 @@ router.get('/wix/install', async (req: Request, res: Response) => {
       [access_token, instanceId]
     )
 
-    res.json({ success: true, message: 'Wix connected successfully' })
-  } catch (err) {
-    console.error('Wix install error:', err)
-    res.status(500).json({ error: 'Failed to connect Wix' })
+    // Show success page inside the Wix dashboard iframe
+    res.send(`
+      <html>
+        <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+          <div style="text-align: center;">
+            <h2 style="color: #0A0A0A;">EventCommand Connected!</h2>
+            <p style="color: #666;">Your Wix site is now linked to EventCommand. Events will be synced automatically.</p>
+          </div>
+        </body>
+      </html>
+    `)
+  } catch (err: any) {
+    console.error('Wix install error:', err?.response?.data || err?.message || err)
+    res.status(500).json({ error: 'Failed to connect Wix', details: err?.response?.data || err?.message })
   }
 })
 
