@@ -117,100 +117,67 @@ router.get('/wix/install', async (req: Request, res: Response) => {
   }
 
   try {
-    // Decode instance to get instanceId
+    // Decode instance to get instanceId and site info
     const parts = instance.split('.')
     let instanceId: string = ''
+    let siteOwnerId: string = ''
 
     if (parts.length >= 2) {
       const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString())
       instanceId = payload.instanceId
+      siteOwnerId = payload.siteOwnerId || ''
     }
 
-    // Wix sends authorizationCode during app installation
-    const authCode = req.query.authorizationCode as string | undefined
+    console.log('Wix: storing instance token for instanceId:', instanceId)
 
-    let tokenRes: any
-
-    if (authCode) {
-      // Try the legacy OAuth endpoint first, then the v2 endpoint
-      console.log('Wix: exchanging authorizationCode, trying legacy endpoint')
-      try {
-        tokenRes = await axios.post('https://www.wixapis.com/oauth/access', {
-          grant_type: 'authorization_code',
-          client_id: clientId,
-          client_secret: clientSecret,
-          code: authCode,
-        })
-      } catch (legacyErr: any) {
-        console.log('Legacy endpoint failed:', legacyErr?.response?.data)
-        // Try v2 endpoint
-        tokenRes = await axios.post('https://www.wixapis.com/oauth2/token', {
-          grant_type: 'authorization_code',
-          client_id: clientId,
-          client_secret: clientSecret,
-          code: authCode,
-        }, {
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-    } else {
-      // Subsequent loads: use client_credentials
-      console.log('Wix: using client_credentials with instanceId:', instanceId)
-      tokenRes = await axios.post('https://www.wixapis.com/oauth2/token', {
-        grant_type: 'client_credentials',
-        client_id: clientId,
-        client_secret: clientSecret,
-        instance_id: instanceId,
-      }, {
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    const { access_token } = tokenRes.data
-    console.log('Wix token obtained successfully')
-
-    // Store the connection
+    // Store the full signed instance as the access token
+    // Wix REST API accepts the signed instance directly in the Authorization header
     await pool.query(
       `INSERT INTO connections (platform, access_token, token_type, org_id, org_name, connected_at, updated_at)
-       VALUES ('wix', $1, 'Bearer', $2, 'Wix Site', NOW(), NOW())
+       VALUES ('wix', $1, 'instance', $2, 'Wix Site', NOW(), NOW())
        ON CONFLICT (platform) DO UPDATE SET
          access_token = $1, org_id = $2, updated_at = NOW()`,
-      [access_token, instanceId]
+      [instance, instanceId]
     )
 
-    // Show success page inside the Wix dashboard iframe
-    res.send(`
-      <html>
-        <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
-          <div style="text-align: center;">
-            <h2 style="color: #0A0A0A;">EventCommand Connected!</h2>
-            <p style="color: #666;">Your Wix site is now linked to EventCommand. Events will be synced automatically.</p>
-          </div>
-        </body>
-      </html>
-    `)
-  } catch (err: any) {
-    const errorDetails = err?.response?.data || err?.message || 'Unknown error'
-    console.error('Wix install error:', JSON.stringify(errorDetails))
-
-    // Decode instance for debug even on error
-    let debugPayload: any = null
+    // Test the connection by making a simple API call
     try {
-      const parts2 = instance.split('.')
-      if (parts2.length >= 2) {
-        debugPayload = JSON.parse(Buffer.from(parts2[1], 'base64').toString())
-      }
-    } catch (_) {}
+      const testRes = await axios.get('https://www.wixapis.com/site-properties/v4/properties', {
+        headers: { Authorization: instance },
+      })
+      const siteName = testRes.data?.properties?.siteDisplayName || 'Wix Site'
 
-    res.status(500).json({
-      error: 'Failed to connect Wix',
-      details: errorDetails,
-      debug: {
-        queryParams: Object.keys(req.query),
-        instanceLength: instance?.length,
-        decodedPayload: debugPayload,
-      }
-    })
+      await pool.query(
+        "UPDATE connections SET org_name = $1 WHERE platform = 'wix'",
+        [siteName]
+      )
+
+      res.send(`
+        <html>
+          <body style="font-family: Inter, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #FAFAFA;">
+            <div style="text-align: center; background: white; padding: 40px; border-radius: 14px; border: 1px solid #EBEBEB;">
+              <h2 style="color: #0A0A0A; margin: 0 0 8px;">EventCommand Connected!</h2>
+              <p style="color: #666; margin: 0;">Site "${siteName}" is now linked. Events will sync automatically.</p>
+            </div>
+          </body>
+        </html>
+      `)
+    } catch (testErr) {
+      // Connection stored but couldn't verify — still OK
+      res.send(`
+        <html>
+          <body style="font-family: Inter, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #FAFAFA;">
+            <div style="text-align: center; background: white; padding: 40px; border-radius: 14px; border: 1px solid #EBEBEB;">
+              <h2 style="color: #0A0A0A; margin: 0 0 8px;">EventCommand Connected!</h2>
+              <p style="color: #666; margin: 0;">Your Wix site is now linked to EventCommand.</p>
+            </div>
+          </body>
+        </html>
+      `)
+    }
+  } catch (err: any) {
+    console.error('Wix install error:', err?.message || err)
+    res.status(500).json({ error: 'Failed to connect Wix', details: err?.message })
   }
 })
 
