@@ -93,56 +93,83 @@ router.delete('/eventbrite', async (_req: Request, res: Response) => {
   }
 })
 
-// ─── Wix OAuth ───
+// ─── Wix App Install ───
 
-// Start Wix OAuth flow
-router.get('/wix', (_req: Request, res: Response) => {
-  const clientId = process.env.WIX_CLIENT_ID
-  const redirectUri = process.env.WIX_REDIRECT_URI
-
-  if (!clientId || !redirectUri) {
-    res.status(500).json({ error: 'Wix OAuth not configured. Set WIX_CLIENT_ID and WIX_REDIRECT_URI.' })
-    return
-  }
-
-  const authUrl = `https://www.wix.com/installer/install?token=${clientId}&appId=${clientId}&redirectUrl=${encodeURIComponent(redirectUri)}`
-  res.redirect(authUrl)
-})
-
-// Wix OAuth callback
-router.get('/wix/callback', async (req: Request, res: Response) => {
-  const { code, instanceId } = req.query
+// Called when a user installs the app on their Wix site (embedded in iframe)
+router.get('/wix/install', async (req: Request, res: Response) => {
+  const { instance } = req.query
   const clientId = process.env.WIX_CLIENT_ID
   const clientSecret = process.env.WIX_CLIENT_SECRET
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
 
-  if (!code || !clientId || !clientSecret) {
-    res.redirect(`${frontendUrl}/settings?auth=error&platform=wix`)
+  if (!instance || !clientId || !clientSecret) {
+    res.status(400).json({ error: 'Missing instance or Wix credentials' })
     return
   }
 
   try {
-    const tokenRes = await axios.post('https://www.wixapis.com/oauth/access', {
-      grant_type: 'authorization_code',
+    // Decode the instance to get the instanceId
+    const instancePayload = Buffer.from((instance as string).split('.')[1], 'base64').toString()
+    const { instanceId } = JSON.parse(instancePayload)
+
+    // Exchange for access token using client_credentials
+    const tokenRes = await axios.post('https://www.wixapis.com/oauth2/token', {
+      grant_type: 'client_credentials',
       client_id: clientId,
       client_secret: clientSecret,
-      code,
+      instance_id: instanceId,
     })
 
-    const { access_token, refresh_token } = tokenRes.data
+    const { access_token } = tokenRes.data
 
+    // Store the connection
     await pool.query(
-      `INSERT INTO connections (platform, access_token, refresh_token, org_id, org_name, connected_at, updated_at)
-       VALUES ('wix', $1, $2, $3, 'Wix Site', NOW(), NOW())
+      `INSERT INTO connections (platform, access_token, token_type, org_id, org_name, connected_at, updated_at)
+       VALUES ('wix', $1, 'Bearer', $2, 'Wix Site', NOW(), NOW())
        ON CONFLICT (platform) DO UPDATE SET
-         access_token = $1, refresh_token = $2, org_id = $3, updated_at = NOW()`,
-      [access_token, refresh_token || null, instanceId || null]
+         access_token = $1, org_id = $2, updated_at = NOW()`,
+      [access_token, instanceId]
     )
 
-    res.redirect(`${frontendUrl}/settings?auth=success&platform=wix`)
+    res.json({ success: true, message: 'Wix connected successfully' })
   } catch (err) {
-    console.error('Wix OAuth error:', err)
-    res.redirect(`${frontendUrl}/settings?auth=error&platform=wix`)
+    console.error('Wix install error:', err)
+    res.status(500).json({ error: 'Failed to connect Wix' })
+  }
+})
+
+// Connect Wix manually with instance ID (for frontend settings page)
+router.post('/wix/connect', async (req: Request, res: Response) => {
+  const { instanceId } = req.body
+  const clientId = process.env.WIX_CLIENT_ID
+  const clientSecret = process.env.WIX_CLIENT_SECRET
+
+  if (!instanceId || !clientId || !clientSecret) {
+    res.status(400).json({ error: 'Missing instanceId or Wix credentials' })
+    return
+  }
+
+  try {
+    const tokenRes = await axios.post('https://www.wixapis.com/oauth2/token', {
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+      instance_id: instanceId,
+    })
+
+    const { access_token } = tokenRes.data
+
+    await pool.query(
+      `INSERT INTO connections (platform, access_token, token_type, org_id, org_name, connected_at, updated_at)
+       VALUES ('wix', $1, 'Bearer', $2, 'Wix Site', NOW(), NOW())
+       ON CONFLICT (platform) DO UPDATE SET
+         access_token = $1, org_id = $2, updated_at = NOW()`,
+      [access_token, instanceId]
+    )
+
+    res.json({ success: true, message: 'Wix connected' })
+  } catch (err) {
+    console.error('Wix connect error:', err)
+    res.status(500).json({ error: 'Failed to connect Wix' })
   }
 })
 
