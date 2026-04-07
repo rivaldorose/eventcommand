@@ -24,8 +24,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       <div className={`mb-10 flex items-center ${collapsed ? 'justify-center px-0' : 'justify-between px-4'}`}>
         {!collapsed && (
           <div>
-            <h1 className="text-xl font-bold tracking-tighter text-[#0A0A0A]">Command</h1>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-[#999] mt-1">The Silent Orchestrator</p>
+            <img src="/logo.png" alt="EventCommand" className="h-8" />
           </div>
         )}
         <button

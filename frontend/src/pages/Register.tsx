@@ -27,7 +27,7 @@ export default function Register() {
     <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
-          <h1 className="text-4xl font-bold tracking-tight text-[#0A0A0A] mb-2">EventCommand</h1>
+          <img src="/logo.png" alt="EventCommand" className="h-12 mx-auto mb-4" />
           <p className="text-sm text-[#474747]">Create your account</p>
         </div>
 
