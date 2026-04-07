@@ -3,18 +3,24 @@ import pool from '../db/client'
 
 const EVENTBRITE_API = 'https://www.eventbriteapi.com/v3'
 
-async function getToken(): Promise<string | null> {
-  const result = await pool.query("SELECT access_token FROM connections WHERE platform = 'eventbrite'")
+async function getToken(userId: string): Promise<string | null> {
+  const result = await pool.query(
+    "SELECT access_token FROM connections WHERE platform = 'eventbrite' AND user_id = $1",
+    [userId]
+  )
   return result.rows[0]?.access_token || null
 }
 
-async function getOrgId(): Promise<string | null> {
-  const result = await pool.query("SELECT org_id FROM connections WHERE platform = 'eventbrite'")
+async function getOrgId(userId: string): Promise<string | null> {
+  const result = await pool.query(
+    "SELECT org_id FROM connections WHERE platform = 'eventbrite' AND user_id = $1",
+    [userId]
+  )
   return result.rows[0]?.org_id || null
 }
 
-async function getClient() {
-  const token = await getToken()
+async function getClient(userId: string) {
+  const token = await getToken(userId)
   if (!token) throw new Error('Eventbrite not connected. Please connect via Settings.')
 
   return axios.create({
@@ -26,12 +32,12 @@ async function getClient() {
   })
 }
 
-export async function isConnected(): Promise<boolean> {
-  const token = await getToken()
+export async function isConnected(userId: string): Promise<boolean> {
+  const token = await getToken(userId)
   return Boolean(token)
 }
 
-export async function createEventbriteEvent(event: {
+export async function createEventbriteEvent(userId: string, event: {
   title: string
   description: string
   startUtc: string
@@ -39,8 +45,8 @@ export async function createEventbriteEvent(event: {
   timezone: string
   currency: string
 }) {
-  const client = await getClient()
-  const orgId = await getOrgId()
+  const client = await getClient(userId)
+  const orgId = await getOrgId(userId)
   if (!orgId) throw new Error('No Eventbrite organization found')
 
   const res = await client.post(`/organizations/${orgId}/events/`, {
@@ -55,14 +61,14 @@ export async function createEventbriteEvent(event: {
   return res.data
 }
 
-export async function updateEventbriteEvent(eventbriteId: string, event: {
+export async function updateEventbriteEvent(userId: string, eventbriteId: string, event: {
   title: string
   description: string
   startUtc: string
   endUtc: string
   timezone: string
 }) {
-  const client = await getClient()
+  const client = await getClient(userId)
   const res = await client.post(`/events/${eventbriteId}/`, {
     event: {
       name: { html: event.title },
@@ -74,28 +80,27 @@ export async function updateEventbriteEvent(eventbriteId: string, event: {
   return res.data
 }
 
-export async function deleteEventbriteEvent(eventbriteId: string) {
-  const client = await getClient()
+export async function deleteEventbriteEvent(userId: string, eventbriteId: string) {
+  const client = await getClient(userId)
   await client.delete(`/events/${eventbriteId}/`)
 }
 
-export async function getOrganizerEvents(orgId?: string) {
-  const client = await getClient()
-  const id = orgId || await getOrgId()
+export async function getOrganizerEvents(userId: string, orgId?: string) {
+  const client = await getClient(userId)
+  const id = orgId || await getOrgId(userId)
   if (!id) throw new Error('No organization ID')
   const res = await client.get(`/organizations/${id}/events/`)
   return res.data
 }
 
-export async function getOrganizer(orgId: string) {
-  const client = await getClient()
+export async function getOrganizer(userId: string, orgId: string) {
+  const client = await getClient(userId)
   const res = await client.get(`/organizations/${orgId}/`)
   return res.data
 }
 
-export async function searchOrganizers(query: string) {
-  const client = await getClient()
-  // Eventbrite doesn't have a direct org search, but we can search events and extract organizers
+export async function searchOrganizers(userId: string, query: string) {
+  const client = await getClient(userId)
   const res = await client.get('/events/search/', {
     params: { q: query, expand: 'organizer' },
   })

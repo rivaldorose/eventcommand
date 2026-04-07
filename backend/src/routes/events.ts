@@ -4,10 +4,11 @@ import { syncEvent } from '../services/syncService'
 
 const router = Router()
 
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      'SELECT * FROM events ORDER BY created_at DESC'
+      'SELECT * FROM events WHERE user_id = $1 ORDER BY created_at DESC',
+      [req.userId]
     )
     const events = result.rows.map((row) => ({
       id: row.id,
@@ -40,16 +41,14 @@ router.post('/', async (req: Request, res: Response) => {
     const { title, date, time, location, description, website, coverImage, status, syncEventbrite, syncWix } = req.body
 
     const result = await pool.query(
-      `INSERT INTO events (title, date, time, location, description, website, cover_image, status, sync_eventbrite, sync_wix)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO events (title, date, time, location, description, website, cover_image, status, sync_eventbrite, sync_wix, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
-      [title, date, time, location, description, website || null, coverImage, status || 'upcoming', syncEventbrite ?? true, syncWix ?? true]
+      [title, date, time, location, description, website || null, coverImage, status || 'upcoming', syncEventbrite ?? true, syncWix ?? true, req.userId]
     )
 
     const event = result.rows[0]
-
-    // Trigger sync in background
-    syncEvent(event).catch((err) => console.error('Sync error:', err))
+    syncEvent(event, req.userId!).catch((err) => console.error('Sync error:', err))
 
     res.status(201).json(event)
   } catch (err) {
@@ -67,9 +66,9 @@ router.put('/:id', async (req: Request, res: Response) => {
       `UPDATE events SET
         title = $1, date = $2, time = $3, location = $4, description = $5, website = $6,
         cover_image = $7, status = $8, sync_eventbrite = $9, sync_wix = $10, updated_at = NOW()
-       WHERE id = $11
+       WHERE id = $11 AND user_id = $12
        RETURNING *`,
-      [title, date, time, location, description, website || null, coverImage, status, syncEventbrite, syncWix, id]
+      [title, date, time, location, description, website || null, coverImage, status, syncEventbrite, syncWix, id, req.userId]
     )
 
     if (result.rows.length === 0) {
@@ -78,9 +77,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     const event = result.rows[0]
-
-    // Trigger sync in background
-    syncEvent(event).catch((err) => console.error('Sync error:', err))
+    syncEvent(event, req.userId!).catch((err) => console.error('Sync error:', err))
 
     res.json(event)
   } catch (err) {
@@ -92,7 +89,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params
-    const result = await pool.query('DELETE FROM events WHERE id = $1 RETURNING *', [id])
+    const result = await pool.query('DELETE FROM events WHERE id = $1 AND user_id = $2 RETURNING *', [id, req.userId])
 
     if (result.rows.length === 0) {
       res.status(404).json({ error: 'Event not found' })

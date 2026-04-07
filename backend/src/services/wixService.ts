@@ -1,13 +1,16 @@
 import axios from 'axios'
 import pool from '../db/client'
 
-async function getInstanceToken(): Promise<string | null> {
-  const result = await pool.query("SELECT access_token FROM connections WHERE platform = 'wix'")
+async function getInstanceToken(userId: string): Promise<string | null> {
+  const result = await pool.query(
+    "SELECT access_token FROM connections WHERE platform = 'wix' AND user_id = $1",
+    [userId]
+  )
   return result.rows[0]?.access_token || null
 }
 
-async function getClient() {
-  const token = await getInstanceToken()
+async function getClient(userId: string) {
+  const token = await getInstanceToken(userId)
   if (!token) throw new Error('Wix not connected. Please connect via Settings.')
 
   return axios.create({
@@ -19,19 +22,19 @@ async function getClient() {
   })
 }
 
-export async function isConnected(): Promise<boolean> {
-  const token = await getInstanceToken()
+export async function isConnected(userId: string): Promise<boolean> {
+  const token = await getInstanceToken(userId)
   return Boolean(token)
 }
 
-export async function createWixEvent(event: {
+export async function createWixEvent(userId: string, event: {
   title: string
   description: string
   startDate: string
   endDate: string
   location: string
 }) {
-  const client = await getClient()
+  const client = await getClient(userId)
   const res = await client.post('/events', {
     event: {
       title: event.title,
@@ -50,14 +53,14 @@ export async function createWixEvent(event: {
   return res.data
 }
 
-export async function updateWixEvent(wixId: string, event: {
+export async function updateWixEvent(userId: string, wixId: string, event: {
   title: string
   description: string
   startDate: string
   endDate: string
   location: string
 }) {
-  const client = await getClient()
+  const client = await getClient(userId)
   const res = await client.patch(`/events/${wixId}`, {
     event: {
       title: event.title,
@@ -76,7 +79,7 @@ export async function updateWixEvent(wixId: string, event: {
   return res.data
 }
 
-export async function deleteWixEvent(wixId: string) {
-  const client = await getClient()
+export async function deleteWixEvent(userId: string, wixId: string) {
+  const client = await getClient(userId)
   await client.delete(`/events/${wixId}`)
 }

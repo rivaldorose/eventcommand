@@ -8,16 +8,20 @@ router.get('/:eventId', async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params
     const result = await pool.query(
-      'SELECT * FROM sync_log WHERE event_id = $1 ORDER BY attempted_at DESC',
-      [eventId]
+      `SELECT sl.* FROM sync_log sl
+       JOIN events e ON sl.event_id = e.id
+       WHERE sl.event_id = $1 AND e.user_id = $2
+       ORDER BY sl.created_at DESC`,
+      [eventId, req.userId]
     )
     const logs = result.rows.map((row) => ({
       id: row.id,
       eventId: row.event_id,
       platform: row.platform,
+      action: row.action,
       status: row.status,
-      message: row.message,
-      attemptedAt: row.attempted_at,
+      message: row.error_message,
+      attemptedAt: row.created_at,
     }))
     res.json(logs)
   } catch (err) {
@@ -29,7 +33,10 @@ router.get('/:eventId', async (req: Request, res: Response) => {
 router.post('/:eventId/retry', async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params
-    const result = await pool.query('SELECT * FROM events WHERE id = $1', [eventId])
+    const result = await pool.query(
+      'SELECT * FROM events WHERE id = $1 AND user_id = $2',
+      [eventId, req.userId]
+    )
 
     if (result.rows.length === 0) {
       res.status(404).json({ error: 'Event not found' })
@@ -37,9 +44,7 @@ router.post('/:eventId/retry', async (req: Request, res: Response) => {
     }
 
     const event = result.rows[0]
-
-    // Trigger sync in background
-    syncEvent(event).catch((err) => console.error('Sync retry error:', err))
+    syncEvent(event, req.userId!).catch((err) => console.error('Sync retry error:', err))
 
     res.json({ message: 'Sync retry initiated' })
   } catch (err) {
