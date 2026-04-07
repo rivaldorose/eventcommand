@@ -25,6 +25,11 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'eventcommand-api' })
 })
 
-app.listen(PORT, () => {
-  console.log(`EventCommand API running on http://localhost:${PORT}`)
-})
+// Only listen in non-Vercel environments
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`EventCommand API running on http://localhost:${PORT}`)
+  })
+}
+
+export default app
