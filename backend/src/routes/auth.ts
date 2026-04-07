@@ -120,19 +120,21 @@ router.get('/wix/install', async (req: Request, res: Response) => {
     // Wix instance format: <signature>.<base64_payload>
     const parts = instance.split('.')
     let instanceId: string
+    let decodedPayload: any = null
 
     if (parts.length >= 2) {
       // Standard signed instance format
-      const payload = Buffer.from(parts[1], 'base64').toString()
-      console.log('Wix decoded payload:', payload)
-      const parsed = JSON.parse(payload)
-      instanceId = parsed.instanceId
+      const payloadStr = Buffer.from(parts[1], 'base64').toString()
+      console.log('Wix decoded payload:', payloadStr)
+      decodedPayload = JSON.parse(payloadStr)
+      instanceId = decodedPayload.instanceId
     } else {
-      // Maybe it's just the instance ID directly
       instanceId = instance
     }
 
     console.log('Wix instanceId:', instanceId)
+    console.log('Wix full decoded:', JSON.stringify(decodedPayload))
+    console.log('Wix using clientId:', clientId)
 
     // Exchange for access token using client_credentials
     const tokenRes = await axios.post('https://www.wixapis.com/oauth2/token', {
@@ -140,6 +142,8 @@ router.get('/wix/install', async (req: Request, res: Response) => {
       client_id: clientId,
       client_secret: clientSecret,
       instance_id: instanceId,
+    }, {
+      headers: { 'Content-Type': 'application/json' },
     })
 
     const { access_token } = tokenRes.data
@@ -166,8 +170,18 @@ router.get('/wix/install', async (req: Request, res: Response) => {
       </html>
     `)
   } catch (err: any) {
-    console.error('Wix install error:', err?.response?.data || err?.message || err)
-    res.status(500).json({ error: 'Failed to connect Wix', details: err?.response?.data || err?.message })
+    const errorDetails = err?.response?.data || err?.message || 'Unknown error'
+    console.error('Wix install error:', JSON.stringify(errorDetails))
+    console.error('Wix error status:', err?.response?.status)
+    res.status(500).json({
+      error: 'Failed to connect Wix',
+      details: errorDetails,
+      debug: {
+        instanceReceived: !!instance,
+        instanceLength: instance?.length,
+        hasDot: instance?.includes('.'),
+      }
+    })
   }
 })
 
