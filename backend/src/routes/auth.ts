@@ -132,16 +132,27 @@ router.get('/wix/install', async (req: Request, res: Response) => {
     let tokenRes: any
 
     if (authCode) {
-      // First-time install: exchange authorization code for tokens
-      console.log('Wix: exchanging authorizationCode for tokens')
-      tokenRes = await axios.post('https://www.wixapis.com/oauth2/token', {
-        grant_type: 'authorization_code',
-        client_id: clientId,
-        client_secret: clientSecret,
-        code: authCode,
-      }, {
-        headers: { 'Content-Type': 'application/json' },
-      })
+      // Try the legacy OAuth endpoint first, then the v2 endpoint
+      console.log('Wix: exchanging authorizationCode, trying legacy endpoint')
+      try {
+        tokenRes = await axios.post('https://www.wixapis.com/oauth/access', {
+          grant_type: 'authorization_code',
+          client_id: clientId,
+          client_secret: clientSecret,
+          code: authCode,
+        })
+      } catch (legacyErr: any) {
+        console.log('Legacy endpoint failed:', legacyErr?.response?.data)
+        // Try v2 endpoint
+        tokenRes = await axios.post('https://www.wixapis.com/oauth2/token', {
+          grant_type: 'authorization_code',
+          client_id: clientId,
+          client_secret: clientSecret,
+          code: authCode,
+        }, {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
     } else {
       // Subsequent loads: use client_credentials
       console.log('Wix: using client_credentials with instanceId:', instanceId)
