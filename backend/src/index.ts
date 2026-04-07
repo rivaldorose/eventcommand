@@ -16,6 +16,7 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'https://eventcommand.vercel.app',
+    'https://frontend-fawn-one-44.vercel.app',
     /\.vercel\.app$/,
   ],
 }))
