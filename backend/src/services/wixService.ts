@@ -49,8 +49,8 @@ async function getClient() {
 }
 
 export async function isConnected(): Promise<boolean> {
-  const token = await getToken()
-  return Boolean(token)
+  const conn = await getConnection()
+  return Boolean(conn)
 }
 
 export async function createWixEvent(event: {
