@@ -117,34 +117,43 @@ router.get('/wix/install', async (req: Request, res: Response) => {
   }
 
   try {
-    // Wix instance format: <signature>.<base64_payload>
+    // Decode instance to get instanceId
     const parts = instance.split('.')
-    let instanceId: string
-    let decodedPayload: any = null
+    let instanceId: string = ''
 
     if (parts.length >= 2) {
-      // Standard signed instance format
-      const payloadStr = Buffer.from(parts[1], 'base64').toString()
-      console.log('Wix decoded payload:', payloadStr)
-      decodedPayload = JSON.parse(payloadStr)
-      instanceId = decodedPayload.instanceId
-    } else {
-      instanceId = instance
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString())
+      instanceId = payload.instanceId
     }
 
-    console.log('Wix instanceId:', instanceId)
-    console.log('Wix full decoded:', JSON.stringify(decodedPayload))
-    console.log('Wix using clientId:', clientId)
+    // Wix sends authorizationCode during app installation
+    const authCode = req.query.authorizationCode as string | undefined
 
-    // Exchange for access token using client_credentials
-    const tokenRes = await axios.post('https://www.wixapis.com/oauth2/token', {
-      grant_type: 'client_credentials',
-      client_id: clientId,
-      client_secret: clientSecret,
-      instance_id: instanceId,
-    }, {
-      headers: { 'Content-Type': 'application/json' },
-    })
+    let tokenRes: any
+
+    if (authCode) {
+      // First-time install: exchange authorization code for tokens
+      console.log('Wix: exchanging authorizationCode for tokens')
+      tokenRes = await axios.post('https://www.wixapis.com/oauth2/token', {
+        grant_type: 'authorization_code',
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: authCode,
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    } else {
+      // Subsequent loads: use client_credentials
+      console.log('Wix: using client_credentials with instanceId:', instanceId)
+      tokenRes = await axios.post('https://www.wixapis.com/oauth2/token', {
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret,
+        instance_id: instanceId,
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
 
     const { access_token } = tokenRes.data
     console.log('Wix token obtained successfully')
