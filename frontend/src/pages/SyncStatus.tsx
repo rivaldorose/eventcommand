@@ -1,21 +1,77 @@
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import Icon from '../components/ui/Icon'
+import api from '../lib/api'
 
-// TODO: connect to API
-const mockTimeline = [
-  { id: '1', label: 'Sync Retrying...', detail: 'Just now \u2022 Attempt 4', color: 'bg-[#0A0A0A]' },
-  { id: '2', label: 'Sync Failed', detail: '2 mins ago \u2022 Connection timeout on Wix API', color: 'bg-[#ba1a1a]' },
-  { id: '3', label: 'Sync Attempted', detail: '5 mins ago \u2022 Manual trigger by Administrator', color: 'bg-[#ccc]' },
-  { id: '4', label: 'Initial Baseline Synced', detail: '12 hours ago \u2022 Eventbrite Integration', color: 'bg-[#059669]' },
-]
+interface SyncLog {
+  id: string
+  platform: string
+  status: string
+  message?: string
+  attemptedAt: string
+}
+
+interface Event {
+  id: string
+  title: string
+  eventbriteSyncStatus: string
+  wixSyncStatus: string
+}
+
+function statusBadge(status: string) {
+  switch (status) {
+    case 'synced': return { label: 'Synced', style: 'bg-[#ECFDF5] text-[#059669]', icon: 'check_circle' }
+    case 'pending': return { label: 'Pending', style: 'bg-[#FFF8E1] text-[#F59E0B]', icon: 'schedule' }
+    case 'failed': return { label: 'Failed', style: 'bg-[#FEF2F2] text-[#DC2626]', icon: 'error' }
+    default: return { label: 'Not Synced', style: 'bg-[#f3f3f3] text-[#777]', icon: 'remove_circle' }
+  }
+}
+
+function timelineColor(status: string) {
+  switch (status) {
+    case 'synced': return 'bg-[#059669]'
+    case 'pending': return 'bg-[#F59E0B]'
+    case 'failed': return 'bg-[#DC2626]'
+    default: return 'bg-[#ccc]'
+  }
+}
 
 export default function SyncStatus() {
+  const { eventId } = useParams()
   const navigate = useNavigate()
+  const [event, setEvent] = useState<Event | null>(null)
+  const [logs, setLogs] = useState<SyncLog[]>([])
+  const [retrying, setRetrying] = useState(false)
 
-  const handleRetry = () => {
-    // TODO: connect to API — POST /api/sync/:eventId/retry
-    console.log('Retrying sync')
+  useEffect(() => {
+    if (!eventId) return
+
+    api.get('/events').then((res) => {
+      const found = res.data.find((e: any) => e.id === eventId)
+      if (found) setEvent(found)
+    })
+
+    api.get(`/sync/${eventId}`).then((res) => {
+      setLogs(res.data)
+    }).catch(() => {})
+  }, [eventId])
+
+  const handleRetry = async () => {
+    if (!eventId) return
+    setRetrying(true)
+    try {
+      await api.post(`/sync/${eventId}/retry`)
+      // Refresh logs after retry
+      const res = await api.get(`/sync/${eventId}`)
+      setLogs(res.data)
+    } catch (err) {
+      console.error('Retry failed:', err)
+    }
+    setRetrying(false)
   }
+
+  const ebStatus = statusBadge(event?.eventbriteSyncStatus || 'not_synced')
+  const wixStatus = statusBadge(event?.wixSyncStatus || 'not_synced')
 
   return (
     <>
@@ -37,7 +93,7 @@ export default function SyncStatus() {
               Activity Monitor
             </p>
             <h2 className="text-[1.75rem] font-semibold tracking-tight text-[#1a1c1c]">
-              Sync Status: Summer Music Festival
+              Sync Status: {event?.title || 'Loading...'}
             </h2>
           </div>
 
@@ -53,12 +109,23 @@ export default function SyncStatus() {
                   </div>
                   <div>
                     <h4 className="text-base font-semibold text-[#1a1c1c]">Eventbrite</h4>
-                    <p className="text-sm text-[#474747]">Last updated 2 mins ago</p>
+                    <p className="text-sm text-[#474747]">{event?.eventbriteSyncStatus || 'not synced'}</p>
                   </div>
                 </div>
-                <div className="bg-[#ECFDF5] text-[#059669] px-4 py-1.5 rounded-full flex items-center gap-2">
-                  <Icon name="check_circle" filled className="!text-[16px]" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Synced</span>
+                <div className="flex items-center gap-3">
+                  {event?.eventbriteSyncStatus === 'failed' && (
+                    <button
+                      onClick={handleRetry}
+                      disabled={retrying}
+                      className="px-4 py-1.5 rounded-full border border-[#0A0A0A] text-[10px] font-bold uppercase tracking-wider text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-white transition-all disabled:opacity-50"
+                    >
+                      {retrying ? 'Retrying...' : 'Retry'}
+                    </button>
+                  )}
+                  <div className={`${ebStatus.style} px-4 py-1.5 rounded-full flex items-center gap-2`}>
+                    <Icon name={ebStatus.icon} filled className="!text-[16px]" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider">{ebStatus.label}</span>
+                  </div>
                 </div>
               </div>
 
@@ -70,19 +137,22 @@ export default function SyncStatus() {
                   </div>
                   <div>
                     <h4 className="text-base font-semibold text-[#1a1c1c]">Wix Events</h4>
-                    <p className="text-sm text-[#ba1a1a]">Connection timed out</p>
+                    <p className="text-sm text-[#474747]">{event?.wixSyncStatus || 'not synced'}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleRetry}
-                    className="px-4 py-1.5 rounded-full border border-[#0A0A0A] text-[10px] font-bold uppercase tracking-wider text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-white transition-all"
-                  >
-                    Retry
-                  </button>
-                  <div className="bg-[#FEF2F2] text-[#DC2626] px-4 py-1.5 rounded-full flex items-center gap-2">
-                    <Icon name="error" filled className="!text-[16px]" />
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Failed</span>
+                  {event?.wixSyncStatus === 'failed' && (
+                    <button
+                      onClick={handleRetry}
+                      disabled={retrying}
+                      className="px-4 py-1.5 rounded-full border border-[#0A0A0A] text-[10px] font-bold uppercase tracking-wider text-[#0A0A0A] hover:bg-[#0A0A0A] hover:text-white transition-all disabled:opacity-50"
+                    >
+                      {retrying ? 'Retrying...' : 'Retry'}
+                    </button>
+                  )}
+                  <div className={`${wixStatus.style} px-4 py-1.5 rounded-full flex items-center gap-2`}>
+                    <Icon name={wixStatus.icon} filled className="!text-[16px]" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider">{wixStatus.label}</span>
                   </div>
                 </div>
               </div>
@@ -91,20 +161,26 @@ export default function SyncStatus() {
             {/* Timeline */}
             <div className="pt-10 border-t border-[#eee]">
               <h3 className="text-sm font-semibold text-[#1a1c1c] mb-8">Timeline</h3>
-              <div className="relative pl-8 space-y-10">
-                {/* Timeline Line */}
-                <div className="absolute left-[3.5px] top-1 bottom-1 w-[1px] bg-[#eee]" />
-
-                {mockTimeline.map((item) => (
-                  <div key={item.id} className="relative">
-                    <div className={`absolute -left-[32px] top-1 w-2 h-2 rounded-full ${item.color} ring-4 ring-white`} />
-                    <div className="flex flex-col">
-                      <span className="text-xs font-semibold text-[#1a1c1c]">{item.label}</span>
-                      <span className="text-[11px] text-[#474747]">{item.detail}</span>
+              {logs.length > 0 ? (
+                <div className="relative pl-8 space-y-10">
+                  <div className="absolute left-[3.5px] top-1 bottom-1 w-[1px] bg-[#eee]" />
+                  {logs.map((log) => (
+                    <div key={log.id} className="relative">
+                      <div className={`absolute -left-[32px] top-1 w-2 h-2 rounded-full ${timelineColor(log.status)} ring-4 ring-white`} />
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold text-[#1a1c1c]">
+                          {log.platform} — {log.status}
+                        </span>
+                        <span className="text-[11px] text-[#474747]">
+                          {new Date(log.attemptedAt).toLocaleString()} {log.message && `• ${log.message}`}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[#474747] text-center py-6">No sync activity yet.</p>
+              )}
             </div>
           </div>
         </div>

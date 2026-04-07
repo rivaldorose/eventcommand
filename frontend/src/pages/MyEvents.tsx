@@ -1,53 +1,21 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import TopBar from '../components/layout/TopBar'
 import Icon from '../components/ui/Icon'
+import api from '../lib/api'
 
-// TODO: connect to API
-const mockEvents = [
-  {
-    id: '1', title: 'Global Tech Summit 2024', refId: '#TS-9231',
-    date: 'Dec 12, 2024 \u2022 09:00 AM', location: 'San Francisco, CA',
-    platforms: [
-      { label: 'Eventbrite', style: 'bg-[#FFF3E0] text-[#E65100]' },
-      { label: 'Wix', style: 'bg-[#E3F2FD] text-[#1565C0]' },
-    ],
-    status: 'upcoming',
-  },
-  {
-    id: '2', title: 'Annual Founders Gala', refId: '#FG-1102',
-    date: 'Dec 15, 2024 \u2022 07:00 PM', location: 'New York, NY',
-    platforms: [
-      { label: 'Eventbrite', style: 'bg-[#FFF3E0] text-[#E65100]' },
-    ],
-    status: 'upcoming',
-  },
-  {
-    id: '3', title: 'Design Week: Opening Night', refId: '#DW-8829',
-    date: 'Jan 05, 2025 \u2022 06:00 PM', location: 'London, UK',
-    platforms: [
-      { label: 'Wix', style: 'bg-[#E3F2FD] text-[#1565C0]' },
-    ],
-    status: 'upcoming',
-  },
-  {
-    id: '4', title: 'Product Launch: Core v2', refId: '#PL-0034',
-    date: 'Jan 22, 2025 \u2022 10:00 AM', location: 'Austin, TX',
-    platforms: [
-      { label: 'Eventbrite', style: 'bg-[#FFF3E0] text-[#E65100]' },
-      { label: 'Wix', style: 'bg-[#E3F2FD] text-[#1565C0]' },
-    ],
-    status: 'upcoming',
-  },
-  {
-    id: '5', title: 'Sustainability Workshop', refId: '#SW-5512',
-    date: 'Feb 14, 2025 \u2022 01:00 PM', location: 'Seattle, WA',
-    platforms: [
-      { label: 'Wix', style: 'bg-[#E3F2FD] text-[#1565C0]' },
-    ],
-    status: 'draft',
-  },
-]
+interface Event {
+  id: string
+  title: string
+  date: string
+  time: string
+  location: string
+  status: string
+  syncEventbrite: boolean
+  syncWix: boolean
+  eventbriteSyncStatus: string
+  wixSyncStatus: string
+}
 
 type Filter = 'all' | 'upcoming' | 'past' | 'draft'
 const filters: { key: Filter; label: string }[] = [
@@ -59,11 +27,26 @@ const filters: { key: Filter; label: string }[] = [
 
 export default function MyEvents() {
   const [activeFilter, setActiveFilter] = useState<Filter>('all')
+  const [events, setEvents] = useState<Event[]>([])
+  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
+  useEffect(() => {
+    api.get('/events').then((res) => {
+      setEvents(res.data)
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [])
+
   const filtered = activeFilter === 'all'
-    ? mockEvents
-    : mockEvents.filter((e) => e.status === activeFilter)
+    ? events
+    : events.filter((e) => e.status === activeFilter)
+
+  const formatDate = (date: string, time: string) => {
+    const d = new Date(date)
+    const formatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    return time ? `${formatted} • ${time}` : formatted
+  }
 
   return (
     <div>
@@ -109,19 +92,24 @@ export default function MyEvents() {
                       </div>
                       <div>
                         <div className="text-sm font-semibold text-[#0A0A0A]">{event.title}</div>
-                        <div className="text-[11px] text-[#474747]">ID: {event.refId}</div>
+                        <div className="text-[11px] text-[#474747]">ID: {event.id.slice(0, 8)}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-8 py-5 text-sm text-[#1a1c1c]">{event.date}</td>
-                  <td className="px-8 py-5 text-sm text-[#1a1c1c]">{event.location}</td>
+                  <td className="px-8 py-5 text-sm text-[#1a1c1c]">{formatDate(event.date, event.time)}</td>
+                  <td className="px-8 py-5 text-sm text-[#1a1c1c]">{event.location || '—'}</td>
                   <td className="px-8 py-5">
                     <div className="flex gap-2">
-                      {event.platforms.map((p) => (
-                        <span key={p.label} className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter ${p.style}`}>
-                          {p.label}
+                      {event.syncEventbrite && (
+                        <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter bg-[#FFF3E0] text-[#E65100]">
+                          Eventbrite
                         </span>
-                      ))}
+                      )}
+                      {event.syncWix && (
+                        <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-tighter bg-[#E3F2FD] text-[#1565C0]">
+                          Wix
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-8 py-5 text-right">
@@ -134,7 +122,7 @@ export default function MyEvents() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {filtered.length === 0 && !loading && (
                 <tr>
                   <td colSpan={5} className="py-16 text-center">
                     <div className="flex flex-col items-center opacity-40">

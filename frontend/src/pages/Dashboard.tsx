@@ -1,20 +1,30 @@
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import TopBar from '../components/layout/TopBar'
 import Icon from '../components/ui/Icon'
+import api from '../lib/api'
 
-// TODO: connect to API
-const mockEvents = [
-  { id: '1', title: 'Tech Nexus Summit 2024', date: 'Oct 12, 2024', syncLabel: 'Synced \u2022 Eventbrite', syncStyle: 'bg-[#ECFDF5] text-[#059669]' },
-  { id: '2', title: 'Design Curators Workshop', date: 'Oct 15, 2024', syncLabel: 'Synced \u2022 Wix', syncStyle: 'bg-[#E3F2FD] text-[#1565C0]' },
-  { id: '3', title: 'Global AI Ethics Forum', date: 'Oct 18, 2024', syncLabel: 'Pending', syncStyle: 'bg-[#f3f3f3] text-[#777]' },
-  { id: '4', title: 'Urban Future Initiative', date: 'Oct 20, 2024', syncLabel: 'Failed \u2022 API Error', syncStyle: 'bg-[#FEF2F2] text-[#DC2626]' },
-]
+interface Event {
+  id: string
+  title: string
+  date: string
+  eventbriteSyncStatus: string
+  wixSyncStatus: string
+}
 
-const mockOrgs = [
-  { id: '1', initials: 'MA', name: 'Museum of Art', next: 'Nov 05' },
-  { id: '2', initials: 'TC', name: 'Tech Collective', next: 'Oct 28' },
-  { id: '3', initials: 'GF', name: 'Green Future', next: 'Dec 01' },
-]
+interface Org {
+  id: string
+  name: string
+  image_url?: string
+}
+
+function getSyncLabel(event: Event) {
+  if (event.eventbriteSyncStatus === 'synced') return { label: 'Synced • Eventbrite', style: 'bg-[#ECFDF5] text-[#059669]' }
+  if (event.wixSyncStatus === 'synced') return { label: 'Synced • Wix', style: 'bg-[#E3F2FD] text-[#1565C0]' }
+  if (event.eventbriteSyncStatus === 'failed' || event.wixSyncStatus === 'failed') return { label: 'Failed • Sync Error', style: 'bg-[#FEF2F2] text-[#DC2626]' }
+  if (event.eventbriteSyncStatus === 'pending' || event.wixSyncStatus === 'pending') return { label: 'Pending', style: 'bg-[#f3f3f3] text-[#777]' }
+  return { label: 'Not Synced', style: 'bg-[#f3f3f3] text-[#777]' }
+}
 
 const greeting = (() => {
   const h = new Date().getHours()
@@ -25,6 +35,25 @@ const greeting = (() => {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const [events, setEvents] = useState<Event[]>([])
+  const [orgs, setOrgs] = useState<Org[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/events').catch(() => ({ data: [] })),
+      api.get('/organizations').catch(() => ({ data: [] })),
+    ]).then(([eventsRes, orgsRes]) => {
+      setEvents(eventsRes.data)
+      setOrgs(orgsRes.data)
+      setLoading(false)
+    })
+  }, [])
+
+  const pendingCount = events.filter(
+    (e) => e.eventbriteSyncStatus === 'pending' || e.wixSyncStatus === 'pending' ||
+           e.eventbriteSyncStatus === 'failed' || e.wixSyncStatus === 'failed'
+  ).length
 
   return (
     <div>
@@ -33,7 +62,7 @@ export default function Dashboard() {
       <div className="flex flex-col gap-12">
         {/* Hero */}
         <section>
-          <h1 className="text-[3.5rem] font-bold tracking-tight text-[#1a1c1c] leading-none mb-2">{greeting}, Rivaldo</h1>
+          <h1 className="text-[3.5rem] font-bold tracking-tight text-[#1a1c1c] leading-none mb-2">{greeting}</h1>
           <p className="text-[#474747] font-medium text-lg">Your orchestration for today is looking seamless.</p>
         </section>
 
@@ -44,24 +73,25 @@ export default function Dashboard() {
               <span className="text-xs font-medium uppercase tracking-widest text-[#474747]">My Events</span>
               <Icon name="calendar_today" className="text-[#bbb]" />
             </div>
-            <p className="text-5xl font-bold tracking-tighter text-[#1a1c1c]">12</p>
-            <p className="text-xs text-emerald-600 mt-2 font-medium">+2 this week</p>
+            <p className="text-5xl font-bold tracking-tighter text-[#1a1c1c]">{loading ? '—' : events.length}</p>
+            <p className="text-xs text-emerald-600 mt-2 font-medium">Total events</p>
           </div>
           <div className="bg-white p-8 rounded-card" style={{ border: '1px solid #EBEBEB' }}>
             <div className="flex items-center justify-between mb-4">
               <span className="text-xs font-medium uppercase tracking-widest text-[#474747]">Following</span>
               <Icon name="business_center" className="text-[#bbb]" />
             </div>
-            <p className="text-5xl font-bold tracking-tighter text-[#1a1c1c]">8 <span className="text-lg font-medium tracking-normal text-[#474747]">orgs</span></p>
-            <p className="text-xs text-[#474747] mt-2 font-medium">Monitoring 24 upcoming feeds</p>
+            <p className="text-5xl font-bold tracking-tighter text-[#1a1c1c]">{loading ? '—' : orgs.length} <span className="text-lg font-medium tracking-normal text-[#474747]">orgs</span></p>
+            <p className="text-xs text-[#474747] mt-2 font-medium">Monitoring feeds</p>
           </div>
           <div className="bg-white p-8 rounded-card" style={{ border: '1px solid #EBEBEB' }}>
             <div className="flex items-center justify-between mb-4">
               <span className="text-xs font-medium uppercase tracking-widest text-[#474747]">Pending Sync</span>
               <Icon name="sync" className="text-[#bbb]" />
             </div>
-            <p className="text-5xl font-bold tracking-tighter text-[#1a1c1c]">2</p>
-            <p className="text-xs text-rose-600 mt-2 font-medium">Requires immediate action</p>
+            <p className="text-5xl font-bold tracking-tighter text-[#1a1c1c]">{loading ? '—' : pendingCount}</p>
+            {pendingCount > 0 && <p className="text-xs text-rose-600 mt-2 font-medium">Requires attention</p>}
+            {pendingCount === 0 && <p className="text-xs text-emerald-600 mt-2 font-medium">All synced</p>}
           </div>
         </section>
 
@@ -88,21 +118,31 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f5f5f5]">
-                  {mockEvents.map((event) => (
-                    <tr
-                      key={event.id}
-                      className="hover:bg-[#f9f9f9] transition-colors cursor-pointer"
-                      onClick={() => navigate(`/sync/${event.id}`)}
-                    >
-                      <td className="px-8 py-5 font-medium text-sm text-[#1a1c1c]">{event.title}</td>
-                      <td className="px-8 py-5 text-sm text-[#474747]">{event.date}</td>
-                      <td className="px-8 py-5">
-                        <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${event.syncStyle}`}>
-                          {event.syncLabel}
-                        </span>
+                  {events.slice(0, 5).map((event) => {
+                    const sync = getSyncLabel(event)
+                    return (
+                      <tr
+                        key={event.id}
+                        className="hover:bg-[#f9f9f9] transition-colors cursor-pointer"
+                        onClick={() => navigate(`/sync/${event.id}`)}
+                      >
+                        <td className="px-8 py-5 font-medium text-sm text-[#1a1c1c]">{event.title}</td>
+                        <td className="px-8 py-5 text-sm text-[#474747]">{new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                        <td className="px-8 py-5">
+                          <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${sync.style}`}>
+                            {sync.label}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {events.length === 0 && !loading && (
+                    <tr>
+                      <td colSpan={3} className="px-8 py-12 text-center text-sm text-[#474747]">
+                        No events yet. Create your first event to get started.
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -114,13 +154,14 @@ export default function Dashboard() {
               <h3 className="text-xl font-semibold tracking-tight text-[#1a1c1c]">Following Feed</h3>
             </div>
             <div className="flex flex-col gap-4">
-              {mockOrgs.map((org) => (
+              {orgs.slice(0, 4).map((org) => (
                 <div key={org.id} className="bg-white p-6 rounded-card flex items-center justify-between group hover:border-[#0A0A0A]/20 transition-all" style={{ border: '1px solid #EBEBEB' }}>
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-[#f3f3f3] flex items-center justify-center font-bold text-xs text-[#555]">{org.initials}</div>
+                    <div className="w-10 h-10 rounded-full bg-[#f3f3f3] flex items-center justify-center font-bold text-xs text-[#555]">
+                      {org.name.slice(0, 2).toUpperCase()}
+                    </div>
                     <div>
                       <h4 className="text-sm font-bold text-[#1a1c1c]">{org.name}</h4>
-                      <p className="text-[11px] text-[#474747]">Next: {org.next}</p>
                     </div>
                   </div>
                   <button className="px-4 py-1.5 rounded-full border border-[#ccc] text-[11px] font-bold text-[#1a1c1c] hover:bg-[#0A0A0A] hover:text-white hover:border-[#0A0A0A] transition-all">
@@ -128,6 +169,9 @@ export default function Dashboard() {
                   </button>
                 </div>
               ))}
+              {orgs.length === 0 && !loading && (
+                <p className="text-sm text-[#474747] text-center py-6">No organizations followed yet.</p>
+              )}
             </div>
 
             {/* Invite CTA */}

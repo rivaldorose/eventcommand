@@ -1,14 +1,15 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import TopBar from '../components/layout/TopBar'
 import Icon from '../components/ui/Icon'
+import api from '../lib/api'
 
 export default function EventEditor() {
   const { id } = useParams()
   const navigate = useNavigate()
   const isEdit = Boolean(id)
+  const [saving, setSaving] = useState(false)
 
-  // TODO: connect to API — fetch event by id for edit mode
   const [form, setForm] = useState({
     title: '',
     date: '',
@@ -20,15 +21,45 @@ export default function EventEditor() {
     syncWix: true,
   })
 
+  useEffect(() => {
+    if (isEdit && id) {
+      api.get('/events').then((res) => {
+        const event = res.data.find((e: any) => e.id === id)
+        if (event) {
+          setForm({
+            title: event.title || '',
+            date: event.date ? event.date.split('T')[0] : '',
+            time: event.time || '',
+            location: event.location || '',
+            website: event.website || '',
+            description: event.description || '',
+            syncEventbrite: event.syncEventbrite ?? true,
+            syncWix: event.syncWix ?? true,
+          })
+        }
+      })
+    }
+  }, [id, isEdit])
+
   const update = (field: string, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // TODO: connect to API — POST /api/events or PUT /api/events/:id
-    console.log('Saving event:', form)
-    navigate('/events')
+    setSaving(true)
+
+    try {
+      if (isEdit) {
+        await api.put(`/events/${id}`, form)
+      } else {
+        await api.post('/events', form)
+      }
+      navigate('/events')
+    } catch (err) {
+      console.error('Save error:', err)
+      setSaving(false)
+    }
   }
 
   return (
@@ -209,9 +240,10 @@ export default function EventEditor() {
             </button>
             <button
               type="submit"
-              className="bg-[#0A0A0A] text-white px-12 py-4 rounded-full font-semibold tracking-tight shadow-lg shadow-black/10 hover:shadow-black/20 active:scale-95 transition-all"
+              disabled={saving}
+              className="bg-[#0A0A0A] text-white px-12 py-4 rounded-full font-semibold tracking-tight shadow-lg shadow-black/10 hover:shadow-black/20 active:scale-95 transition-all disabled:opacity-50"
             >
-              Save & Sync
+              {saving ? 'Saving...' : 'Save & Sync'}
             </button>
           </div>
         </form>
