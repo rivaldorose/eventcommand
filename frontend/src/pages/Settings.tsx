@@ -49,13 +49,18 @@ export default function Settings() {
     }
   }
 
-  const connectEventbrite = () => {
-    // Redirect to backend OAuth start
-    window.location.href = '/api/auth/eventbrite'
+  const connectEventbrite = async () => {
+    try {
+      const res = await api.get('/auth/eventbrite/start')
+      window.location.href = res.data.url
+    } catch {
+      console.error('Failed to start Eventbrite OAuth')
+    }
   }
 
   const connectWix = () => {
-    window.location.href = '/api/auth/wix'
+    // Wix connection happens via app installation on Wix site
+    window.open('https://www.wix.com/installer/install?appId=a0185254-32e2-4420-a5d9-e9c49c9276e6', '_blank')
   }
 
   const disconnect = async (platform: 'eventbrite' | 'wix') => {

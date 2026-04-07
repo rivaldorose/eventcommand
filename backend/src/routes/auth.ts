@@ -5,44 +5,83 @@ import { requireAuth } from '../middleware/auth'
 
 const router = Router()
 
+const EVENTBRITE_AUTH_URL = 'https://www.eventbrite.com/oauth/authorize'
+const EVENTBRITE_TOKEN_URL = 'https://www.eventbrite.com/oauth/token'
 const EVENTBRITE_API = 'https://www.eventbriteapi.com/v3'
 
-// ─── Eventbrite ───
+// ─── Eventbrite OAuth ───
 
-// Store Eventbrite API token (protected)
-router.post('/eventbrite/connect', requireAuth, async (req: Request, res: Response) => {
-  const { token } = req.body
+// Get the OAuth URL (protected — returns URL, frontend redirects)
+router.get('/eventbrite/start', requireAuth, (req: Request, res: Response) => {
+  const clientId = process.env.EVENTBRITE_CLIENT_ID
+  const redirectUri = process.env.EVENTBRITE_REDIRECT_URI
 
-  if (!token) {
-    res.status(400).json({ error: 'Missing Eventbrite token' })
+  if (!clientId || !redirectUri) {
+    res.status(500).json({ error: 'Eventbrite OAuth not configured' })
+    return
+  }
+
+  // Encode user_id in state so the callback knows which user to associate
+  const state = req.userId
+  const url = `${EVENTBRITE_AUTH_URL}?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
+  res.json({ url })
+})
+
+// OAuth callback (unprotected — receives redirect from Eventbrite)
+router.get('/eventbrite/callback', async (req: Request, res: Response) => {
+  const { code, state } = req.query
+  const userId = state as string
+  const clientId = process.env.EVENTBRITE_CLIENT_ID
+  const clientSecret = process.env.EVENTBRITE_CLIENT_SECRET
+  const redirectUri = process.env.EVENTBRITE_REDIRECT_URI
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+
+  if (!code || !userId || !clientId || !clientSecret || !redirectUri) {
+    res.redirect(`${frontendUrl}/settings?auth=error&message=missing_params`)
     return
   }
 
   try {
-    // Verify token by fetching user info
+    // Exchange code for token
+    const tokenRes = await axios.post(
+      EVENTBRITE_TOKEN_URL,
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: code as string,
+        redirect_uri: redirectUri,
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    )
+
+    const { access_token, token_type } = tokenRes.data
+
+    // Fetch user/org info
     const meRes = await axios.get(`${EVENTBRITE_API}/users/me/`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${access_token}` },
     })
 
     const orgRes = await axios.get(`${EVENTBRITE_API}/users/me/organizations/`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${access_token}` },
     })
 
     const orgId = orgRes.data.organizations?.[0]?.id || null
     const orgName = orgRes.data.organizations?.[0]?.name || meRes.data.name || 'Unknown'
 
+    // Upsert connection for this user
     await pool.query(
       `INSERT INTO connections (platform, access_token, token_type, org_id, org_name, user_id, connected_at, updated_at)
-       VALUES ('eventbrite', $1, 'Bearer', $2, $3, $4, NOW(), NOW())
+       VALUES ('eventbrite', $1, $2, $3, $4, $5, NOW(), NOW())
        ON CONFLICT (platform, user_id) DO UPDATE SET
-         access_token = $1, org_id = $2, org_name = $3, updated_at = NOW()`,
-      [token, orgId, orgName, req.userId]
+         access_token = $1, token_type = $2, org_id = $3, org_name = $4, updated_at = NOW()`,
+      [access_token, token_type || 'Bearer', orgId, orgName, userId]
     )
 
-    res.json({ success: true, orgId, orgName })
-  } catch (err: any) {
-    console.error('Eventbrite connect error:', err?.response?.data || err?.message)
-    res.status(400).json({ error: 'Invalid Eventbrite token' })
+    res.redirect(`${frontendUrl}/settings?auth=success&platform=eventbrite`)
+  } catch (err) {
+    console.error('Eventbrite OAuth error:', err)
+    res.redirect(`${frontendUrl}/settings?auth=error&platform=eventbrite`)
   }
 })
 
@@ -79,8 +118,6 @@ router.get('/wix/install', async (req: Request, res: Response) => {
       instanceId = payload.instanceId
     }
 
-    // For Wix installs, we store without user_id initially
-    // The user links it later from their EventCommand settings
     await pool.query(
       `INSERT INTO connections (platform, access_token, token_type, org_id, org_name, connected_at, updated_at)
        VALUES ('wix', $1, 'instance', $2, 'Wix Site', NOW(), NOW())
