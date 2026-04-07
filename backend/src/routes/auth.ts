@@ -172,14 +172,23 @@ router.get('/wix/install', async (req: Request, res: Response) => {
   } catch (err: any) {
     const errorDetails = err?.response?.data || err?.message || 'Unknown error'
     console.error('Wix install error:', JSON.stringify(errorDetails))
-    console.error('Wix error status:', err?.response?.status)
+
+    // Decode instance for debug even on error
+    let debugPayload: any = null
+    try {
+      const parts2 = instance.split('.')
+      if (parts2.length >= 2) {
+        debugPayload = JSON.parse(Buffer.from(parts2[1], 'base64').toString())
+      }
+    } catch (_) {}
+
     res.status(500).json({
       error: 'Failed to connect Wix',
       details: errorDetails,
       debug: {
-        instanceReceived: !!instance,
+        queryParams: Object.keys(req.query),
         instanceLength: instance?.length,
-        hasDot: instance?.includes('.'),
+        decodedPayload: debugPayload,
       }
     })
   }
